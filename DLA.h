@@ -5,15 +5,16 @@
 
 using namespace std;
 
-enum class SpawnMode{
+
+// sposob losowania punktu startowego dla nowych czasteczek
+// Uniform, losowy na calej przestrzeni
+// Border, losowo na krawedziach
+// Circle, losowo na okregu wokol istniejacego grafu
+enum class SpawnMode {
     Uniform,
     Border,
     Circle
 };
 
-// self expaintory but lets add a bit more detail:
-// Uniform - totaly random
-// Border - spawning from border 
-// Circle - spawning on a circle around structure to save time
-
+// rozrost grafu DLA
 int runDLA(Grid& grid, Graph& graph, float targetFill, SpawnMode mode, mt19937& rng);

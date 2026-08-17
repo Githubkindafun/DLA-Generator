@@ -7,59 +7,49 @@ using namespace std;
 float SAFE_MARGIN = 2.0f;
 int MAX_ATTEMPTS = 1024;
 
+// rozrozst grafu DLA na gridzie dodajac wierzcholki do grafu
 int runDLA(Grid& grid, Graph& graph, float targetFill, SpawnMode mode, std::mt19937& rng) {
-    // directions up, down, right, left
+    // cztery kierunki dla czasteczek 
     vector<int> dx{0, 0, 1, -1};
     vector<int> dy{1, -1, 0, 0};
 
     int target = (int)(targetFill * grid.totalCells());
     int added = 0;
-    // alright now we need some randomness
-    // used only for random spawn - currently unused but still can be used 
-    // gives diffrent results when used
+    // losowa kolumna i losowy wiersz (dla rollbacku gdy przekroczone zostanie max attempts)
     uniform_int_distribution<int> randX(0, grid.width - 1);
     uniform_int_distribution<int> randY(0, grid.height - 1);
-    // used to select index from dx/dy for random walker for unfiorm chance for each
-    // direction
+    // kierunek ruchu
     uniform_int_distribution<int> randDirection(0, 3);
-    // for border selection during border spawn
+    // wybor krawdzi dla Border Spawn
     uniform_int_distribution<int> randSide(0, 3);
-    // for circle spawn to slect where on the circle to spawn
+    // miejsce na okregu przy Circle Spawn
     uniform_real_distribution<float> randAngle(0.0f, 2 * M_PI);
 
-    // precomputation for circle spawn
-    // center of the cricle +/- the DLA struct should grow inside of it
+    // srodek okregu 
     float circleCenterX = (grid.width - 1) * 0.5f;
     float circleCenterY = (grid.height - 1) * 0.5f;
-    // max circle for current resolution
-    // if we were to change the "spawn area" from square to something like this
-    // #0#
-    // 000
-    // #0#
-    // we need some more elaborate selection for radius
-    // ah and max radius is basicly the distance to the closest edge from the center
-    // float maxRadius = min({circleCenterX, circleCenterY, grid.width - 1 - circleCenterX, grid.height - 1 - circleCenterY}) - SAFE_MARGIN;
-    // but for now since we work only on square areas we can use this 
+    // maksymalna srednica od srodka do krawedzi
     float maxRadius = (grid.width - 1) / 2.0f - SAFE_MARGIN;
     float currentRadius = 0.0f;
     if(mode == SpawnMode::Circle) {
         for(Node& n : graph.nodes) {
             float centerToX = n.x - circleCenterX;
             float centerToY = n.y - circleCenterY;
-            // pitagoras :o
             float tmpRadius = sqrt(centerToX * centerToX + centerToY * centerToY);
             if(tmpRadius > currentRadius) {
                 currentRadius = tmpRadius;
             }
         }
     }
+    // maly bufor do promienia grafu,
+    // aby czasteczki nie pojawialy sie zbyt blisko
     float safetyCricleMargin = min({grid.width, grid.height}) * 0.1f;
 
     while(grid.occupiedCount() < target) {
         int px = 0;
         int py = 0;
         switch(mode) {
-            // totaly random mode where walker spawns in random place
+            // w pelni losowy spawn
             case SpawnMode::Uniform: {
                 do {
                     px = randX(rng);
@@ -67,11 +57,7 @@ int runDLA(Grid& grid, Graph& graph, float targetFill, SpawnMode mode, std::mt19
                 } while(grid.isOccupied(px, py));
                 break;
             }
-            // classic border case where we spawn a walker from a random
-            // side of the gird
-            // still it does work when we have square or rectangle might
-            // be problematic if we were to change the grid shape
-            // in case of failing to many times we go with uniform spawn
+            // klasyczne DLA z losowej krawdzi weduja losowe czasteczki
             case SpawnMode::Border: {
                 int failedAttempts = 0;
                 bool goUniform = false;
@@ -107,17 +93,15 @@ int runDLA(Grid& grid, Graph& graph, float targetFill, SpawnMode mode, std::mt19
                 } while(!goUniform && grid.isOccupied(px, py));
                 break;
             }
-
+            // optymalizacja czasteczki pojawiaja sie na okregu do okola grafu
             case SpawnMode::Circle: {
-                // we compute the spawn radius for spedific particle
-                // we recompute it every run
+                // promien okregu do spawnu czasteczek
                 float spawnRadius = max(1.5f * currentRadius, currentRadius + safetyCricleMargin);
                 spawnRadius = min(spawnRadius, maxRadius);
                 int failedAttempts = 0;
                 bool goUniform = false;
                 while(true) {
                     float angle = randAngle(rng);
-                    // we convert angle to cartesian
                     float x = circleCenterX + spawnRadius * cos(angle);
                     float y = circleCenterY + spawnRadius * sin(angle);
                     px = (int)round(x);
@@ -140,8 +124,7 @@ int runDLA(Grid& grid, Graph& graph, float targetFill, SpawnMode mode, std::mt19
                 break;
             }
         }
-        // so we got our starting point now walker now needs to do his work
-        // that is traverse the grid and stick to something
+        // losowe bladzenie
         while(!grid.hasOccupiedNeighbour(px, py)) {
             int directon = randDirection(rng);
             int nextX = px + dx[directon];
@@ -152,7 +135,7 @@ int runDLA(Grid& grid, Graph& graph, float targetFill, SpawnMode mode, std::mt19
                 py = nextY;
             }
         }
-        // so it is time to stick now
+        // czasteczka przykleja sie do pierwszego napotkanego zajetego sasiada
         int parentNode = -1;
         for(int i = 0; i < 4; i++) {
             int nextX = px + dx[i];
@@ -165,11 +148,12 @@ int runDLA(Grid& grid, Graph& graph, float targetFill, SpawnMode mode, std::mt19
         int nodeIdx = graph.addNode(px, py, parentNode);
         grid.setNode(px, py, nodeIdx);
         added++;
-        // alright so we end here, buuut we need to update the circle data
+        // aktualizacja promienia skoro graf rosnie
         if(mode == SpawnMode::Circle) {
             float centerToX = px - circleCenterX;
             float centerToY = py - circleCenterY;
             float tmpRadius = sqrt(centerToX * centerToX + centerToY * centerToY);
+            // jak powiekszyl sie promien to naturalnie aktualizujemy aktualny
             if(tmpRadius > currentRadius) {
                 currentRadius = tmpRadius;
             }

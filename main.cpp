@@ -5,51 +5,46 @@
 #include "DLA.h"
 #include "config.hpp"
 
+using namespace std;
+
 int main() {
-    // if we pass SEED rng is done with this seed
-    // otherwise it is totally random
+    // seed = 0 totalnie losowy seed,
+    // wpp. seed = SEED z config
+    uint32_t seed = config::SEED;
     mt19937 rng;
-    if(config::SEED == 0) {
+    if(seed == 0) {
         rng = mt19937{random_device{}()};
     } else {
-        rng = mt19937{config::SEED};
+        rng = mt19937{seed};
     }
-    
-    // time for the cold start
-    // We create empty graph and empy 8x8 grid
+    // Cold start, zwykle DLA na gridzie START_SIZE x START_SIZE
     Grid grid(config::START_SIZE, config::START_SIZE);
     Graph graph;
-    // we place our seed at the center
-    // not so random tho in future work we can add random placement
-    // or custom seed like fancy shape
     int centerX = config::START_SIZE / 2;
     int centerY = config::START_SIZE / 2;
     grid.setNode(centerX, centerY, graph.addNode(centerX, centerY, -1));
-    // alright so we run the DLA until we fill the amount we want
-    int iter0Added = runDLA(grid, graph, config::FILL_RATIO, SpawnMode::Border, rng);
-    // next we compute the heights for the nodes
+    runDLA(grid, graph, config::FILL_RATIO, SpawnMode::Border, rng);
     graph.computeHeights();
-    // crisp part
+    // czesc ostra
     Heightmap crisp(config::START_SIZE, config::START_SIZE);
     crisp.renderFromGraph(graph);
     crisp = crisp.gaussianBlure(config::CRISP_PREBLURE_FRACTION * (float)(config::START_SIZE));
-    // blure part
+    // czesc rozmyta
     Heightmap blure = crisp.gaussianBlure(config::BLURE_FRACTION * (float)(config::START_SIZE));
-    // combine
     Heightmap combined = Heightmap::combine(crisp, blure, config::COMBINE_ALPHA);
     combined.normalize();
-    combined.savePNG("iter0_cold_start.png");
-    // so now it is time for the iterative part
+    // podwajanie rozdielczosci
     int currentSize = config::START_SIZE;
+    SpawnMode mode;
     for(int i = 1; i <= config::ITERATIONS; i++) {
         currentSize *= 2;
-        SpawnMode mode;
         if(i >= config::CIRCLE_FROM_ITER) {
             mode = SpawnMode::Circle;
         } else {
             mode = SpawnMode::Border;
         }
-        // crisp
+        // podwojenie rozdielczosci grafu, przebudowa grida zajetych komorek
+        // kazdy wierzcholek dostaje komorke
         graph.crispResize(currentSize, currentSize, 1, rng);
         Grid newGrid(currentSize, currentSize);
         for(int j = 0; j < (int)(graph.nodes.size()); j++) {
@@ -59,18 +54,22 @@ int main() {
             }
         }
         grid = move(newGrid);
-        int crispAdded = runDLA(grid, graph, config::FILL_RATIO, mode, rng);
+        runDLA(grid, graph, config::FILL_RATIO, mode, rng);
         graph.computeHeights();
         Heightmap crispHeightmap(currentSize, currentSize);
         crispHeightmap.renderFromGraph(graph);
         crispHeightmap = crispHeightmap.gaussianBlure(config::CRISP_PREBLURE_FRACTION * (float)(currentSize));
-        // blure
-        float blureSigma = config::BLURE_FRACTION * (float)(currentSize);
-        Heightmap blureHeightmap = combined.linearInterpolationResize(currentSize, currentSize).gaussianBlure(blureSigma);
-        // combine
-        combined = Heightmap::combine(crispHeightmap, blureHeightmap, config::COMBINE_ALPHA);
+        // czesc rozmyta
+        float blurSigma = config::BLURE_FRACTION * (float)(currentSize);
+        Heightmap blurHeightmap = combined.linearInterpolationResize(currentSize, currentSize).gaussianBlure(blurSigma);
+        combined = Heightmap::combine(crispHeightmap, blurHeightmap, config::COMBINE_ALPHA);
         combined.normalize();
-        combined.savePNG(format("iter{}_combined.png", i));
+    }
+    string base = "s" + to_string(seed);
+    combined.saveRaw(base + ".r32");
+    combined.savePNG(base + ".PNG");
+    if(config::EXPORT_TO_OBJ) {
+        combined.exportOBJ(base + ".obj", config::OBJ_HEIGHT_SCALE);
     }
     return 0;
 }

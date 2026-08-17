@@ -1,17 +1,17 @@
-#pragma once 
+#pragma once
 #include <bits/stdc++.h>
 #include "Graph.h"
+#include "config.hpp"
+
 using namespace std;
 
+constexpr float INV_R2 = 1.0f / (float)(config::RIDGE_RADIUS * config::RIDGE_RADIUS);
 
 class Heightmap {
-private:
-
 public:
     int width;
     int height;
     vector<float> data;
-
     Heightmap(int w, int h, float initValue = 0.0f) {
         this->width = w;
         this->height = h;
@@ -23,25 +23,21 @@ public:
     void set(int x, int y, float value) {
         data[y * width + x] = value;
     }
-    // takes coordinates and returns the blend of 4 surranding pixels
-    // basing how close the point is to each corner
+    // bierze koordynaty i zwraca blend 4 sasiadujacych pikseli
     float sample(float x, float y);
-
-    // returns new Heightmap at 2X resolution
+    // podwojenie rozmiaru mapy
     Heightmap linearInterpolationResize(int newWidth, int newHeight);
-
-    // convolution :)
+    // rozmycia gaussa
     Heightmap gaussianBlure(float sigma);
-
-    // converts the DLA graph into heightmap
+    // render heightmapy z grafu
     void renderFromGraph(Graph& g);
-
-    // self explainatory
+    // laczenie czesci crisp i blure
     static Heightmap combine(Heightmap& crisp, Heightmap& blure, float alpha);
-
-    // self explainatory
     void normalize();
-
-    // self explainatory
+    // zapis do PNG
     void savePNG(const string& path);
+    // zapis do surowych floatow
+    void saveRaw(const string& path);
+    // export do .obj
+    void exportOBJ(const string& path, float heightScale);
 };

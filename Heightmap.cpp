@@ -6,25 +6,31 @@
 
 using namespace std;
 
+// interpolacja wykonywana 3 razy, gorna krawedz, dolna krawedz, i pomiedzy
+// wartosc w punkcie (x, y) jako mieszanka 4 najblizszych komorek,
+// waga = bliskosc punktu do kazdego z rogow
 float Heightmap::sample(float x, float y) {
-    // clamp to valid range
+    // tak zeby nie wyjsc poza mape
     x = clamp(x, 0.0f, (float)(width - 1));
     y = clamp(y, 0.0f, (float)(height - 1));
 
+    // lewy gorny rog komorki gdzie lezy (x,y)
     int x0 = (int)x;
     int y0 = (int)y;
+    // prawy dolny rog
     int x1 = min(x0 + 1, width - 1);
     int y1 = min(y0 + 1, height - 1);
-
+    // jak gleboko w komorce lezy punkt (x, y)
     float px = x - x0;
     float py = y - y0;
-    // returns the blend from 4 directions
+    // "mieszanka" czterech rogow, im blizej jednego tym wiekszy udzial
     return (1 - px) * (1 - py) * get(x0, y0) +
             px * (1 - py) * get(x1, y0) +
             (1 - px) * py * get(x0, y1) +
             px * py * get(x1, y1); 
 }
 
+// przeskalowanie heigtmapy x2 (powstaje nowa)
 Heightmap Heightmap::linearInterpolationResize(int newWidth, int newHeight) {
     Heightmap newHeightmap(newWidth, newHeight);
     float scaleX = (float)(width - 1) / (float)(newWidth - 1);
@@ -37,9 +43,14 @@ Heightmap Heightmap::linearInterpolationResize(int newWidth, int newHeight) {
     return newHeightmap;
 }
 
+// rozmycie powiekszonej mapy za pomoca gaussa,
+// sigma tutaj decyduje o ksztalcie dzwonu gaussa a zasieg dopasowuje sie do niego
+// im szerszy dzwo tym dalej trzeba siagnac
 Heightmap Heightmap::gaussianBlure(float sigma) {
+    // jak daleko siegamy 
     int radius = (int)(ceil(3.0f * sigma));
     int kernelSize = 2 * radius + 1;
+    // lista wag, czyli ile kazdy z sasiadow sie liczy
     vector<float> kernel(kernelSize);
     float kernelSum = 0.0f;
     for(int i = 0; i < kernelSize; i++) {
@@ -47,9 +58,12 @@ Heightmap Heightmap::gaussianBlure(float sigma) {
         kernel[i] = exp(-0.5 * x * x / (sigma * sigma));
         kernelSum += kernel[i];
     }
+    // podzial aby wagi sumowaly sie do 1
     for(float& k : kernel) {
         k /= kernelSum;
     }
+    // pierwszy przebieg, w poziomie,
+    // dla kazdego piksela liczymy wazona srednia jego samego w prawo i lewo
     Heightmap tmp(width, height);
     for(int y = 0; y < height; y++) {
         for(int x = 0; x < width; x++) {
@@ -60,6 +74,7 @@ Heightmap Heightmap::gaussianBlure(float sigma) {
             tmp.set(x, y, value);
         }
     }
+    // drugi przebieg, w pionie na rozmytej "w poziomie" mapie
     Heightmap result(width, height);
     for(int y = 0; y < height; y++) {
         for(int x = 0; x < width; x++) {
@@ -73,8 +88,13 @@ Heightmap Heightmap::gaussianBlure(float sigma) {
     return result;
 }
 
+// transformacja grafu w teren
+// "na" kazdym z wierzcholkow i wzdluz kazdej z krawedzi stawiany jest wypukly garb
+// w przypadku ich nakladania na siebie brany jest wyzszy 
 void Heightmap::renderFromGraph(Graph& g) {
+    // czysczenie mapy
     fill(data.begin(), data.end(), 0.0f);
+    // postawienie jednej kopoly, najwyzszy punk o wysokosci h w centrum, opadajac do 0
     auto plotDome = [&](int domeCenterX, int domeCenterY, float h) {
         for(int dy = -config::RIDGE_RADIUS; dy <= config::RIDGE_RADIUS; dy++) {
             for(int dx = -config::RIDGE_RADIUS; dx <= config::RIDGE_RADIUS; dx++) {
@@ -87,7 +107,7 @@ void Heightmap::renderFromGraph(Graph& g) {
                 if(r2 > config::RIDGE_RADIUS * config::RIDGE_RADIUS) {
                     continue;
                 }
-                float value = h * (1.0f - r2 * config::INV_R2);
+                float value = h * (1.0f - r2 * INV_R2);
                 if(value > get(x, y)) {
                     set(x, y, value);
                 }
@@ -117,6 +137,7 @@ void Heightmap::renderFromGraph(Graph& g) {
     }
 }
 
+// laczenie czesci ostrej oraz rozmytej
 Heightmap Heightmap::combine(Heightmap& crisp, Heightmap& blure, float alpha) {
     Heightmap result(crisp.width, crisp.height);
     for(int i = 0; i < (int)(result.data.size()); i++) {
@@ -158,4 +179,31 @@ void Heightmap::savePNG(const string& path) {
         pixels[i] = (uint8_t)(pow(clamp(data[i] * inv_max, 0.0f, 1.0f), 0.4f) * 255.0f);
     }
     stbi_write_png(path.c_str(), width, height, 1, pixels.data(), width);
+}
+
+// zapis terenu w surowych float32
+void Heightmap::saveRaw(const string& path) {
+    ofstream out(path, ios::binary);
+    out.write((const char*)data.data(),(streamsize)(data.size() * sizeof(float)));
+}
+
+void Heightmap::exportOBJ(const string& path, float heightScale) {
+    ofstream out(path);
+    out << fixed << setprecision(4);
+    for(int x = 0; x < width; x++) {
+        for(int y = 0; y < height; y++) {
+            float h = get(x, y) * heightScale;
+            out << "v " << x << ' ' << h << ' ' << y << endl;
+        }
+    }
+    for(int x = 0; x < width - 1; x++) {
+        for(int y = 0; y < height - 1; y++) {
+            int i00 = y * width + x + 1;
+            int i10 = y * width + (x + 1) + 1;
+            int i01 = (y + 1) * width + x + 1;
+            int i11 = (y + 1) * width + (x + 1) + 1;
+            out << "f " << i00 << ' ' << i01 << ' ' << i11 << endl;
+            out << "f " << i00 << ' ' << i11 << ' ' << i10 << endl;
+        }
+    }
 }
