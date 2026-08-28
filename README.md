@@ -1,6 +1,8 @@
 # DLA-Generator
 
-* make -j
-* ./dla_dla_mountain to run thats all
+* make -> dla_mountain
 
-Narazie nie dodalem debug printow ale dziala :)
+lub
+* make run
+
+po zmianie argumentów make clean
