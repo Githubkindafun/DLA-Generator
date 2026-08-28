@@ -1,8 +1,8 @@
 # DLA-Generator
 
-* make -> ./dla_mountain
+* `make` -> `./dla_mountain`
 
 lub
-* make run
+* `make run`
 
-po zmianie argumentów make clean
+po zmianie argumentów przed przekompilowaniem `make clean`
