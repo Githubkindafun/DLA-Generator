@@ -1,6 +1,6 @@
 # DLA-Generator
 
-* make -> dla_mountain
+* make -> ./dla_mountain
 
 lub
 * make run
